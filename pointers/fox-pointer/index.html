@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
+<title>Waypoint — Point anywhere. We'll take you there.</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,440;0,9..144,560;1,9..144,500&family=Schibsted+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --teal-950: #0a2726;
+    --teal-900: #0f3433;
+    --teal-850: #154342;
+    --teal-800: #1c504e;
+    --ivory: #f7f0e2;
+    --ivory-soft: #efe4cd;
+    --amber: #e2a04a;
+    --amber-bright: #f3bd72;
+
+    --glass-bg: rgba(247, 240, 226, 0.065);
+    --glass-bg-active: rgba(247, 240, 226, 0.15);
+    --glass-border: rgba(247, 240, 226, 0.15);
+    --glass-border-active: rgba(227, 165, 79, 0.65);
+    --glass-shadow: 0 10px 28px rgba(3, 14, 14, 0.30);
+    --glass-shadow-active: 0 16px 40px rgba(3, 14, 14, 0.40), 0 0 30px rgba(227, 165, 79, 0.22);
+
+    --orbit-radius: clamp(108px, 18vw, 210px);
+    --character-w: clamp(126px, 23vw, 250px);
+    --card-w: clamp(76px, 11.5vw, 112px);
+    --card-h: clamp(68px, 9vw, 84px);
+    --orbit-diameter: calc((var(--orbit-radius) + (var(--card-w) / 2)) * 2);
+
+    --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
+    --font-body: 'Schibsted Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--teal-950);
+  }
+
+  body {
+    font-family: var(--font-body);
+    color: var(--ivory);
+    overflow-x: hidden;
+  }
+
+  .hero {
+    position: relative;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(14px, 2.6vh, 28px);
+    padding: clamp(16px, 2.4vw, 32px) clamp(18px, 4vw, 56px) clamp(22px, 3.6vh, 44px);
+    background:
+      radial-gradient(ellipse 70% 55% at 50% 8%, var(--teal-800) 0%, transparent 60%),
+      radial-gradient(ellipse 90% 70% at 50% 100%, var(--teal-900) 0%, transparent 55%),
+      var(--teal-950);
+    overflow: hidden;
+  }
+
+  .hero-bg {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+  }
+  .hero-bg span {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(60px);
+    opacity: 0.35;
+  }
+  .hero-bg span.b1 {
+    width: 38vw; height: 38vw;
+    top: -10%; left: -8%;
+    background: radial-gradient(circle, var(--teal-800), transparent 70%);
+  }
+  .hero-bg span.b2 {
+    width: 30vw; height: 30vw;
+    bottom: -8%; right: -6%;
+    background: radial-gradient(circle, var(--amber), transparent 72%);
+    opacity: 0.10;
+  }
+
+  .hero-topbar {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    max-width: 1180px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+  }
+  .logo {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--font-display);
+    font-size: clamp(1rem, 1.6vw, 1.2rem);
+    font-weight: 560;
+    letter-spacing: 0.01em;
+    color: var(--ivory);
+    user-select: none;
+  }
+  .logo-mark {
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    border: 1.5px solid var(--amber-bright);
+    position: relative;
+    flex-shrink: 0;
+  }
+  .logo-mark::after {
+    content: "";
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 3px; height: 3px;
+    background: var(--amber-bright);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 -8px 0 -1px var(--amber-bright);
+  }
+
+  .hero-copy {
+    position: relative;
+    z-index: 2;
+    text-align: center;
+    max-width: 640px;
+  }
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: clamp(0.68rem, 1.1vw, 0.78rem);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--amber-bright);
+    margin: 0 0 clamp(10px, 1.6vh, 16px);
+  }
+  h1 {
+    font-family: var(--font-display);
+    font-weight: 560;
+    font-size: clamp(1.7rem, 4.4vw, 2.9rem);
+    line-height: 1.1;
+    letter-spacing: -0.01em;
+    margin: 0 0 clamp(10px, 1.6vh, 16px);
+  }
+  h1 .accent {
+    display: block;
+    font-style: italic;
+    font-weight: 500;
+    color: var(--amber-bright);
+  }
+  .subhead {
+    font-size: clamp(0.92rem, 1.6vw, 1.06rem);
+    line-height: 1.55;
+    color: var(--ivory-soft);
+    opacity: 0.82;
+    margin: 0 auto;
+    max-width: 38ch;
+  }
+
+  .orbit-stage {
+    position: relative;
+    z-index: 2;
+    width: var(--orbit-diameter);
+    height: var(--orbit-diameter);
+    max-width: 92vw;
+    touch-action: none;
+  }
+
+  .orbit-ring {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: calc(var(--orbit-radius) * 2);
+    height: calc(var(--orbit-radius) * 2);
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    border: 1px solid rgba(247, 240, 226, 0.14);
+    pointer-events: none;
+  }
+  .orbit-ring::before {
+    content: "";
+    position: absolute;
+    inset: 14%;
+    border-radius: 50%;
+    border: 1px dashed rgba(247, 240, 226, 0.07);
+  }
+
+  .character-glow {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: calc(var(--character-w) * 1.2);
+    height: calc(var(--character-w) * 1.2 * 0.76);
+    transform: translate(-50%, -50%);
+    background: radial-gradient(ellipse at 50% 48%, rgba(247, 240, 226, 0.30) 0%, rgba(247, 240, 226, 0.10) 45%, transparent 74%);
+    filter: blur(20px);
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .character-sprite {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: var(--character-w);
+    aspect-ratio: 300 / 228;
+    transform: translate(-50%, -50%);
+    background-image: url('spritesheet.jpg');
+    background-repeat: no-repeat;
+    background-size: 8000% 100%;
+    background-position: 0% 0%;
+    -webkit-mask-image: radial-gradient(ellipse farthest-corner at center, #000 42%, transparent 88%);
+            mask-image: radial-gradient(ellipse farthest-corner at center, #000 42%, transparent 88%);
+    opacity: 0;
+    transition: opacity 0.7s ease;
+    pointer-events: none;
+    z-index: 2;
+  }
+  .character-sprite.loaded { opacity: 1; }
+
+  .card-orbit {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+  }
+
+  .orbit-card {
+    --card-scale: 1;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: var(--card-w);
+    height: var(--card-h);
+    margin-left: calc(var(--card-w) / -2);
+    margin-top: calc(var(--card-h) / -2);
+    transform: rotate(var(--angle)) translate(var(--orbit-radius)) rotate(calc(-1 * var(--angle))) scale(var(--card-scale));
+    transform-origin: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    text-align: center;
+    padding: 6px 8px;
+    border-radius: clamp(14px, 2.4vw, 20px);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    color: var(--ivory);
+    font-family: var(--font-body);
+    cursor: pointer;
+    transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+                background 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease;
+  }
+  .orbit-card:hover { --card-scale: 1.03; }
+  .orbit-card.active {
+    --card-scale: 1.05;
+    background: var(--glass-bg-active);
+    border-color: var(--glass-border-active);
+    box-shadow: var(--glass-shadow-active);
+  }
+  .orbit-card.pulsed { --card-scale: 1.0; }
+  .orbit-card:focus-visible {
+    outline: none;
+    border-color: var(--amber-bright);
+    box-shadow: var(--glass-shadow-active), 0 0 0 3px rgba(243, 189, 114, 0.35);
+  }
+
+  .orbit-card-icon {
+    font-size: clamp(1.05rem, 2.6vw, 1.5rem);
+    line-height: 1;
+    opacity: 0.9;
+    transition: opacity 0.35s ease;
+  }
+  .orbit-card.active .orbit-card-icon { opacity: 1; }
+  .orbit-card-label {
+    font-size: clamp(0.7rem, 1.5vw, 0.86rem);
+    font-weight: 600;
+    line-height: 1.2;
+  }
+  .orbit-card-sub {
+    font-size: clamp(0.6rem, 1.1vw, 0.7rem);
+    line-height: 1.2;
+    color: var(--ivory-soft);
+    opacity: 0.7;
+  }
+
+  @media (max-width: 480px) {
+    .orbit-card-sub { display: none; }
+    h1 .accent { display: inline; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .orbit-card { transition-duration: 0.01ms !important; }
+    .character-sprite { transition-duration: 0.01ms !important; }
+  }
+
+</style>
+</head>
+<body>
+
+<section class="hero" id="hero">
+  <div class="hero-bg" aria-hidden="true"><span class="b1"></span><span class="b2"></span></div>
+
+  <header class="hero-topbar">
+    <div class="logo">
+      <span class="logo-mark" aria-hidden="true"></span>
+      Waypoint
+    </div>
+  </header>
+
+  <div class="hero-copy">
+    <p class="eyebrow">AI Trip Planning</p>
+    <h1>Point anywhere. <span class="accent">We'll take you there.</span></h1>
+    <p class="subhead">Move around Fenn to explore flights, stays, and everything in between.</p>
+  </div>
+
+  <div class="orbit-stage" id="orbitStage">
+    <div class="orbit-ring" aria-hidden="true"></div>
+    <div class="character-glow" aria-hidden="true"></div>
+    <div class="character-sprite" id="characterSprite" role="img" aria-label="Fenn the fox, pointing toward whatever you're exploring"></div>
+
+    <div class="card-orbit" role="group" aria-label="Explore by category">
+      <button class="orbit-card" type="button" style="--angle:270deg" data-angle="270" data-category="flights">
+        <span class="orbit-card-icon" aria-hidden="true">✈️</span>
+        <span class="orbit-card-label">Flights</span>
+        <span class="orbit-card-sub">Direct routes, real seats</span>
+      </button>
+      <button class="orbit-card" type="button" style="--angle:315deg" data-angle="315" data-category="hotels">
+        <span class="orbit-card-icon" aria-hidden="true">🏨</span>
+        <span class="orbit-card-label">Hotels</span>
+        <span class="orbit-card-sub">Boutique to beachfront</span>
+      </button>
+      <button class="orbit-card" type="button" style="--angle:0deg" data-angle="0" data-category="explore">
+        <span class="orbit-card-icon" aria-hidden="true">🗺️</span>
+        <span class="orbit-card-label">Explore</span>
+        <span class="orbit-card-sub">Wander with intent</span>
+      </button>
+      <button class="orbit-card" type="button" style="--angle:45deg" data-angle="45" data-category="food">
+        <span class="orbit-card-icon" aria-hidden="true">🍜</span>
+        <span class="orbit-card-label">Food</span>
+        <span class="orbit-card-sub">Eat like a local</span>
+      </button>
+      <button class="orbit-card" type="button" style="--angle:90deg" data-angle="90" data-category="activities">
+        <span class="orbit-card-icon" aria-hidden="true">🎒</span>
+        <span class="orbit-card-label">Activities</span>
+        <span class="orbit-card-sub">Beyond the guidebook</span>
+      </button>
+      <button class="orbit-card" type="button" style="--angle:135deg" data-angle="135" data-category="experiences">
+        <span class="orbit-card-icon" aria-hidden="true">📸</span>
+        <span class="orbit-card-label">Experiences</span>
+        <span class="orbit-card-sub">Moments worth the detour</span>
+      </button>
+      <button class="orbit-card" type="button" style="--angle:180deg" data-angle="180" data-category="weather">
+        <span class="orbit-card-icon" aria-hidden="true">🌤️</span>
+        <span class="orbit-card-label">Weather</span>
+        <span class="orbit-card-sub">Pack for what's coming</span>
+      </button>
+      <button class="orbit-card" type="button" style="--angle:225deg" data-angle="225" data-category="budget">
+        <span class="orbit-card-icon" aria-hidden="true">💰</span>
+        <span class="orbit-card-label">Budget</span>
+        <span class="orbit-card-sub">Every trip, one number</span>
+      </button>
+    </div>
+  </div>
+</section>
+
+<script>
+(function () {
+  'use strict';
+
+  // ------------------------------------------------------------------
+  // Sprite / animation configuration, calibrated against the source
+  // animation. The source is NOT a constant-speed turntable — it eases
+  // into and holds at a handful of poses (idle, right-point, down-point,
+  // left-point, up-point) rather than sweeping all 360 degrees at a
+  // uniform rate. ANCHORS maps [angle, frameIndex] pairs measured
+  // directly from the footage; angles between anchors are interpolated
+  // linearly, so the mapping stays continuous (no snapping) while still
+  // lining up "mouse pointing right" with "character pointing right",
+  // etc. Angle convention matches atan2(dy,dx) in screen space:
+  // 0=right, 90=down, 180=left, 270=up.
+  // ------------------------------------------------------------------
+  var TOTAL_FRAMES = 80;
+  var IDLE_FRAME = 0;
+  var ANCHORS = [
+    [0, 33],
+    [90, 40],
+    [180, 49],
+    [270, 72],
+    [360, 113]
+  ];
+  var DEAD_ZONE_RATIO = 0.14;
+  var CONVERGE_EPS = 0.03;
+
+  function angleToFrame(angleDeg) {
+    var a = ((angleDeg % 360) + 360) % 360;
+    for (var i = 0; i < ANCHORS.length - 1; i++) {
+      var a0 = ANCHORS[i][0], f0 = ANCHORS[i][1];
+      var a1 = ANCHORS[i + 1][0], f1 = ANCHORS[i + 1][1];
+      if (a >= a0 && a <= a1) {
+        var t = (a - a0) / (a1 - a0);
+        var raw = f0 + t * (f1 - f0);
+        return ((Math.round(raw) % TOTAL_FRAMES) + TOTAL_FRAMES) % TOTAL_FRAMES;
+      }
+    }
+    return IDLE_FRAME;
+  }
+
+  function shortestDelta(target, current, total) {
+    var d = (target - current) % total;
+    if (d > total / 2) d -= total;
+    if (d < -total / 2) d += total;
+    return d;
+  }
+
+  var stage = document.getElementById('orbitStage');
+  var characterEl = document.getElementById('characterSprite');
+  var cards = Array.prototype.slice.call(document.querySelectorAll('.orbit-card'));
+  if (!stage || !characterEl) return;
+
+  // Card angles are read from each button's own data-angle attribute
+  // (rather than a separate hardcoded array) so the index returned by
+  // nearestCardIndex always points at the correct element in `cards`,
+  // regardless of the order cards happen to appear in the DOM.
+  var CARD_ANGLES = cards.map(function (c) { return parseFloat(c.getAttribute('data-angle')); });
+
+  function nearestCardIndex(angleDeg) {
+    var a = ((angleDeg % 360) + 360) % 360;
+    var best = 0, bestDist = Infinity;
+    for (var i = 0; i < CARD_ANGLES.length; i++) {
+      var d = Math.abs(a - CARD_ANGLES[i]);
+      d = Math.min(d, 360 - d);
+      if (d < bestDist) { bestDist = d; best = i; }
+    }
+    return best;
+  }
+
+  var reducedMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  var smoothing = reducedMotion ? 1 : 0.16;
+
+  var targetAngle = 0;
+  var isEngaged = false;
+  var currentFrame = IDLE_FRAME;
+  var lastDisplayedFrame = -1;
+  var activeCardIndex = -1;
+  var rafId = null;
+
+  function displayFrame(frameFloat) {
+    var idx = Math.round(frameFloat);
+    idx = ((idx % TOTAL_FRAMES) + TOTAL_FRAMES) % TOTAL_FRAMES;
+    if (idx === lastDisplayedFrame) return;
+    lastDisplayedFrame = idx;
+    var pct = (idx / (TOTAL_FRAMES - 1)) * 100;
+    characterEl.style.backgroundPositionX = pct + '%';
+  }
+
+  function setActiveCard(index) {
+    if (index === activeCardIndex) return;
+    if (activeCardIndex >= 0 && cards[activeCardIndex]) {
+      cards[activeCardIndex].classList.remove('active');
+    }
+    activeCardIndex = index;
+    if (index >= 0 && cards[index]) {
+      cards[index].classList.add('active');
+    }
+  }
+
+  function tick() {
+    rafId = null;
+    var targetFrame = isEngaged ? angleToFrame(targetAngle) : IDLE_FRAME;
+    var delta = shortestDelta(targetFrame, currentFrame, TOTAL_FRAMES);
+
+    if (Math.abs(delta) < CONVERGE_EPS) {
+      currentFrame = targetFrame;
+    } else {
+      currentFrame += delta * smoothing;
+      currentFrame = ((currentFrame % TOTAL_FRAMES) + TOTAL_FRAMES) % TOTAL_FRAMES;
+      rafId = requestAnimationFrame(tick);
+    }
+
+    displayFrame(currentFrame);
+    if (isEngaged) setActiveCard(nearestCardIndex(targetAngle));
+  }
+
+  function ensureLoop() {
+    if (rafId === null) rafId = requestAnimationFrame(tick);
+  }
+
+  function updateFromPoint(clientX, clientY) {
+    var rect = stage.getBoundingClientRect();
+    var cx = rect.left + rect.width / 2;
+    var cy = rect.top + rect.height / 2;
+    var dx = clientX - cx;
+    var dy = clientY - cy;
+    var dist = Math.hypot(dx, dy);
+    var deadZone = Math.min(rect.width, rect.height) * DEAD_ZONE_RATIO;
+    if (dist >= deadZone) {
+      var ang = Math.atan2(dy, dx) * 180 / Math.PI;
+      targetAngle = ((ang % 360) + 360) % 360;
+    }
+    isEngaged = true;
+    ensureLoop();
+  }
+
+  function disengage() {
+    isEngaged = false;
+    setActiveCard(-1);
+    ensureLoop();
+  }
+
+  stage.addEventListener('pointerdown', function (e) { updateFromPoint(e.clientX, e.clientY); });
+  stage.addEventListener('pointermove', function (e) { updateFromPoint(e.clientX, e.clientY); });
+  stage.addEventListener('pointerup', disengage);
+  stage.addEventListener('pointercancel', disengage);
+  stage.addEventListener('pointerleave', disengage);
+
+  cards.forEach(function (card) {
+    var angle = parseFloat(card.getAttribute('data-angle'));
+
+    card.addEventListener('focus', function () {
+      targetAngle = angle;
+      isEngaged = true;
+      ensureLoop();
+    });
+
+    card.addEventListener('blur', function () {
+      setTimeout(function () {
+        if (cards.indexOf(document.activeElement) === -1) disengage();
+      }, 0);
+    });
+
+    card.addEventListener('click', function () {
+      card.classList.add('pulsed');
+      setTimeout(function () { card.classList.remove('pulsed'); }, 220);
+      card.dispatchEvent(new CustomEvent('orbit:select', {
+        bubbles: true,
+        detail: { category: card.getAttribute('data-category') }
+      }));
+    });
+  });
+
+  // Show the correct idle frame immediately, then reveal once the
+  // sprite sheet has actually loaded (avoids a flash of missing image).
+  displayFrame(IDLE_FRAME);
+  var preload = new Image();
+  preload.onload = function () { characterEl.classList.add('loaded'); };
+  preload.onerror = function () { characterEl.classList.add('loaded'); };
+  preload.src = 'spritesheet.jpg';
+})();
+</script>
+
+</body>
+</html>
