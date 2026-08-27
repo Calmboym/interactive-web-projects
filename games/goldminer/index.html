@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>شکار طلا با قلاب</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+        }
+        body {
+            background: #2c3e50;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: sans-serif;
+            touch-action: manipulation;
+        }
+        .game-wrapper {
+            background: #34495e;
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            max-width: 400px;
+            aspect-ratio: 400 / 600;
+            background: #87CEEB;
+            border-radius: 12px;
+            cursor: pointer;
+            touch-action: none;
+        }
+        .info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 12px;
+            color: white;
+            font-weight: bold;
+            font-size: 1.2rem;
+            padding: 0 8px;
+        }
+        .score {
+            background: rgba(0,0,0,0.3);
+            padding: 6px 18px;
+            border-radius: 30px;
+        }
+        .restart-btn {
+            background: #e67e22;
+            border: none;
+            color: white;
+            padding: 6px 20px;
+            border-radius: 30px;
+            font-weight: bold;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .restart-btn:hover {
+            background: #d35400;
+            transform: scale(1.05);
+        }
+        .restart-btn:active {
+            transform: scale(0.95);
+        }
+        @media (max-width: 450px) {
+            .game-wrapper { padding: 10px; }
+            .info { font-size: 1rem; }
+        }
+    </style>
+</head>
+<body>
+<div class="game-wrapper">
+    <canvas id="gameCanvas" width="400" height="600"></canvas>
+    <div class="info">
+        <span class="score">💰 طلا: <span id="scoreDisplay">0</span></span>
+        <button class="restart-btn" id="restartBtn">🔄 دوباره</button>
+    </div>
+</div>
+
+<script>
+    (function() {
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreSpan = document.getElementById('scoreDisplay');
+
+        const W = 400, H = 600;
+
+        // ---------- متغیرهای قلاب ----------
+        let hookX = W / 2;
+        let hookY = 50;              // موقعیت عمودی قلاب
+        let hookDir = 1;             // جهت حرکت افقی
+        const HOOK_SPEED = 2.8;      // سرعت حرکت چپ و راست
+        const THROW_SPEED = 5.5;     // سرعت پایین رفتن قلاب
+        const RETRIEVE_SPEED = 4.5;  // سرعت جمع شدن طناب
+
+        let isThrowing = false;      // آیا قلاب در حال پرتاب است؟
+        let isRetrieving = false;    // آیا طناب در حال جمع شدن است؟
+        let score = 0;
+        let gameOver = false;
+        let win = false;             // برنده شدن (همه طلاها گرفته شده)
+
+        let items = [];              // آرایه اشیاء (طلا و سنگ)
+
+        // ---------- تولید اشیا ----------
+        function generateItems() {
+            items = [];
+            const goldCount = 6;
+            const rockCount = 4;
+
+            // طلاها
+            for (let i = 0; i < goldCount; i++) {
+                let x, y, overlap;
+                let attempts = 0;
+                do {
+                    x = 30 + Math.random() * (W - 60);
+                    y = 380 + Math.random() * 170;
+                    overlap = items.some(it => Math.hypot(it.x - x, it.y - y) < it.radius + 25);
+                    attempts++;
+                } while (overlap && attempts < 30);
+                items.push({ x, y, radius: 17, type: 'gold', collected: false });
+            }
+
+            // سنگ‌ها
+            for (let i = 0; i < rockCount; i++) {
+                let x, y, overlap;
+                let attempts = 0;
+                do {
+                    x = 30 + Math.random() * (W - 60);
+                    y = 380 + Math.random() * 170;
+                    overlap = items.some(it => Math.hypot(it.x - x, it.y - y) < it.radius + 25);
+                    attempts++;
+                } while (overlap && attempts < 30);
+                items.push({ x, y, radius: 15, type: 'rock', collected: false });
+            }
+        }
+
+        // ---------- ریست بازی ----------
+        function resetGame() {
+            hookX = W / 2;
+            hookY = 50;
+            hookDir = 1;
+            isThrowing = false;
+            isRetrieving = false;
+            score = 0;
+            gameOver = false;
+            win = false;
+            generateItems();
+            updateScore();
+        }
+
+        function updateScore() {
+            scoreSpan.textContent = score;
+        }
+
+        // ---------- بررسی برخورد قلاب با اشیا ----------
+        function checkCollision() {
+            for (let item of items) {
+                if (item.collected) continue;
+                const dist = Math.hypot(hookX - item.x, hookY - item.y);
+                // شعاع قلاب = ۱۴
+                if (dist < 14 + item.radius) {
+                    if (item.type === 'gold') {
+                        item.collected = true;
+                        score++;
+                        updateScore();
+                        isThrowing = false;
+                        isRetrieving = true;
+
+                        // بررسی برد (همه طلاها جمع شده؟)
+                        const remaining = items.filter(it => it.type === 'gold' && !it.collected);
+                        if (remaining.length === 0) {
+                            win = true;
+                            gameOver = true;
+                        }
+                        return true;
+                    } else if (item.type === 'rock') {
+                        // برخورد با سنگ = باخت
+                        gameOver = true;
+                        isThrowing = false;
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        // ---------- حلقه اصلی بازی ----------
+        function gameLoop() {
+            // ----- به‌روزرسانی منطق -----
+            if (!gameOver) {
+                if (!isThrowing && !isRetrieving) {
+                    // حالت عادی: حرکت افقی قلاب
+                    hookX += hookDir * HOOK_SPEED;
+                    if (hookX > W - 30 || hookX < 30) {
+                        hookDir *= -1;
+                    }
+                    hookY = 50;
+                } else if (isThrowing) {
+                    // پرتاب به پایین
+                    hookY += THROW_SPEED;
+                    if (hookY >= H - 20) {
+                        // به پایین رسید بدون برخورد
+                        isThrowing = false;
+                        isRetrieving = true;
+                    } else {
+                        // بررسی برخورد در حین حرکت
+                        checkCollision();
+                    }
+                } else if (isRetrieving) {
+                    // جمع شدن طناب
+                    hookY -= RETRIEVE_SPEED;
+                    if (hookY <= 50) {
+                        hookY = 50;
+                        isRetrieving = false;
+                    }
+                }
+            }
+
+            // ----- رسم صحنه -----
+            drawScene();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // ---------- تابع رسم ----------
+        function drawScene() {
+            ctx.clearRect(0, 0, W, H);
+
+            // آسمان
+            const grad = ctx.createLinearGradient(0, 0, 0, H);
+            grad.addColorStop(0, '#4A90D9');
+            grad.addColorStop(0.7, '#87CEEB');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, W, H);
+
+            // زمین
+            ctx.fillStyle = '#5d8c3a';
+            ctx.fillRect(0, H - 20, W, 20);
+            ctx.fillStyle = '#7cb342';
+            ctx.fillRect(0, H - 20, W, 6);
+
+            // ----- رسم اشیا (طلا و سنگ) -----
+            for (let item of items) {
+                if (item.collected) continue;
+
+                if (item.type === 'gold') {
+                    // طلا
+                    ctx.shadowColor = 'rgba(255, 215, 0, 0.6)';
+                    ctx.shadowBlur = 22;
+                    ctx.beginPath();
+                    ctx.arc(item.x, item.y, item.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = '#FFD700';
+                    ctx.fill();
+                    ctx.shadowBlur = 8;
+                    ctx.strokeStyle = '#DAA520';
+                    ctx.lineWidth = 2.5;
+                    ctx.stroke();
+                    // برق
+                    ctx.shadowBlur = 30;
+                    ctx.beginPath();
+                    ctx.arc(item.x - 4, item.y - 5, 4, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                } else if (item.type === 'rock') {
+                    // سنگ
+                    ctx.shadowColor = 'rgba(0,0,0,0.3)';
+                    ctx.shadowBlur = 12;
+                    ctx.beginPath();
+                    ctx.arc(item.x, item.y, item.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = '#7f8c8d';
+                    ctx.fill();
+                    ctx.shadowBlur = 6;
+                    ctx.fillStyle = '#95a5a6';
+                    ctx.beginPath();
+                    ctx.arc(item.x - 3, item.y - 4, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                }
+            }
+
+            // ----- رسم طناب و قلاب -----
+            ctx.shadowBlur = 0;
+            // طناب
+            ctx.beginPath();
+            ctx.moveTo(hookX, 10);
+            ctx.lineTo(hookX, hookY);
+            ctx.strokeStyle = '#5D4037';
+            ctx.lineWidth = 3.5;
+            ctx.stroke();
+
+            // قلاب (دایره + قلابک)
+            ctx.shadowColor = 'rgba(0,0,0,0.3)';
+            ctx.shadowBlur = 10;
+            ctx.beginPath();
+            ctx.arc(hookX, hookY, 14, 0, Math.PI * 2);
+            ctx.fillStyle = '#78909C';
+            ctx.fill();
+            ctx.strokeStyle = '#455A64';
+            ctx.lineWidth = 2.5;
+            ctx.stroke();
+            // قلابک
+            ctx.beginPath();
+            ctx.moveTo(hookX + 7, hookY + 5);
+            ctx.quadraticCurveTo(hookX + 16, hookY + 12, hookX + 9, hookY + 22);
+            ctx.strokeStyle = '#455A64';
+            ctx.lineWidth = 3.5;
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            // ----- نمایش امتیاز روی کانوس -----
+            ctx.font = 'bold 22px sans-serif';
+            ctx.fillStyle = 'white';
+            ctx.shadowColor = 'rgba(0,0,0,0.8)';
+            ctx.shadowBlur = 12;
+            ctx.fillText('💰 ' + score, 18, 44);
+            ctx.shadowBlur = 0;
+
+            // ----- پیام‌های وضعیت (Game Over / Win) -----
+            if (gameOver) {
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.shadowColor = 'rgba(0,0,0,0.8)';
+                ctx.shadowBlur = 20;
+                if (win) {
+                    ctx.font = 'bold 44px sans-serif';
+                    ctx.fillStyle = '#F1C40F';
+                    ctx.fillText('🎉 برنده!', W/2, H/2 - 30);
+                    ctx.font = '24px sans-serif';
+                    ctx.fillStyle = 'white';
+                    ctx.fillText('همه طلاها رو گرفتی!', W/2, H/2 + 40);
+                } else {
+                    ctx.font = 'bold 44px sans-serif';
+                    ctx.fillStyle = '#E74C3C';
+                    ctx.fillText('💥 باختی!', W/2, H/2 - 20);
+                    ctx.font = '22px sans-serif';
+                    ctx.fillStyle = 'white';
+                    ctx.fillText('به سنگ خوردی!', W/2, H/2 + 40);
+                }
+                ctx.shadowBlur = 0;
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'alphabetic';
+            }
+
+            // ----- راهنما (در حالت آماده) -----
+            if (!gameOver && !isThrowing && !isRetrieving) {
+                ctx.font = '18px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillStyle = 'rgba(255,255,255,0.85)';
+                ctx.shadowColor = 'rgba(0,0,0,0.8)';
+                ctx.shadowBlur = 12;
+                ctx.fillText('👆 کلیک / لمس کن تا قلاب رو بندازی', W/2, 92);
+                ctx.shadowBlur = 0;
+                ctx.textAlign = 'left';
+            }
+        }
+
+        // ---------- رویدادهای کلیک و لمس ----------
+        function handleTap(e) {
+            e.preventDefault();
+            if (gameOver) return;
+            if (!isThrowing && !isRetrieving) {
+                isThrowing = true;
+                hookY = 50;   // شروع از بالا
+            }
+        }
+
+        canvas.addEventListener('click', handleTap);
+        canvas.addEventListener('touchstart', handleTap, { passive: false });
+        canvas.addEventListener('touchmove', function(e) {
+            e.preventDefault();
+        }, { passive: false });
+
+        // دکمه ریستارت
+        document.getElementById('restartBtn').addEventListener('click', function(e) {
+            e.stopPropagation();
+            resetGame();
+        });
+
+        // ---------- شروع بازی ----------
+        resetGame();
+        gameLoop();
+    })();
+</script>
+</body>
+</html>
