@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>بازی پرنده</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+        }
+        body {
+            background: #2c3e50;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: sans-serif;
+            touch-action: manipulation;
+        }
+        .game-wrapper {
+            background: #3498db;
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        canvas {
+            display: block;
+            margin: 0 auto;
+            background: #87CEEB;
+            border-radius: 12px;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.2);
+            width: 100%;
+            height: auto;
+            max-width: 400px;
+            aspect-ratio: 400 / 600;
+            cursor: pointer;
+            touch-action: none;
+        }
+        .info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 12px;
+            color: white;
+            font-weight: bold;
+            font-size: 1.2rem;
+            padding: 0 8px;
+        }
+        .score {
+            background: rgba(0,0,0,0.3);
+            padding: 6px 18px;
+            border-radius: 30px;
+        }
+        .restart-btn {
+            background: #e67e22;
+            border: none;
+            color: white;
+            padding: 6px 20px;
+            border-radius: 30px;
+            font-weight: bold;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: 0.2s;
+            touch-action: manipulation;
+        }
+        .restart-btn:hover {
+            background: #d35400;
+            transform: scale(1.05);
+        }
+        .restart-btn:active {
+            transform: scale(0.95);
+        }
+        @media (max-width: 450px) {
+            .game-wrapper {
+                padding: 10px;
+            }
+            .info {
+                font-size: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="game-wrapper">
+    <canvas id="gameCanvas" width="400" height="600"></canvas>
+    <div class="info">
+        <span class="score">امتیاز: <span id="scoreDisplay">0</span></span>
+        <button class="restart-btn" id="restartBtn">🔄 شروع مجدد</button>
+    </div>
+</div>
+
+<script>
+    (function() {
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreSpan = document.getElementById('scoreDisplay');
+
+        // ابعاد ثابت
+        const CANVAS_W = 400;
+        const CANVAS_H = 600;
+
+        // تنظیمات پرنده
+        const BIRD_RADIUS = 15;
+        const GRAVITY = 0.35;
+        const JUMP_FORCE = -7.5;
+        const BIRD_X = 70; // موقعیت ثابت افقی
+
+        // تنظیمات لوله‌ها
+        const PIPE_WIDTH = 52;
+        const PIPE_GAP = 150;
+        const PIPE_SPEED = 2.8;
+        const PIPE_SPAWN_INTERVAL = 95; // تعداد فریم بین هر لوله جدید
+
+        // متغیرهای بازی
+        let birdY = CANVAS_H / 2;
+        let birdVelocity = 0;
+        let pipes = [];
+        let score = 0;
+        let gameOver = false;
+        let frameCount = 0;
+        let animationId = null;
+
+        // توابع کمکی
+        function resetGame() {
+            birdY = CANVAS_H / 2;
+            birdVelocity = 0;
+            pipes = [];
+            score = 0;
+            gameOver = false;
+            frameCount = 0;
+            updateScoreDisplay();
+        }
+
+        function updateScoreDisplay() {
+            scoreSpan.textContent = score;
+        }
+
+        // تولید لوله جدید
+        function spawnPipe() {
+            const minY = 60;
+            const maxY = CANVAS_H - PIPE_GAP - 60;
+            const topHeight = Math.floor(Math.random() * (maxY - minY + 1)) + minY;
+            pipes.push({
+                x: CANVAS_W,
+                topHeight: topHeight,
+                width: PIPE_WIDTH,
+                gap: PIPE_GAP,
+                scored: false // برای جلوگیری از چندبار امتیاز
+            });
+        }
+
+        // برخورد پرنده با لوله‌ها
+        function checkCollisions() {
+            // برخورد با زمین یا سقف
+            if (birdY - BIRD_RADIUS < 0 || birdY + BIRD_RADIUS > CANVAS_H) {
+                return true;
+            }
+
+            for (let p of pipes) {
+                // بررسی برخورد افقی
+                if (BIRD_X + BIRD_RADIUS > p.x && BIRD_X - BIRD_RADIUS < p.x + p.width) {
+                    // برخورد عمودی با لوله بالایی یا پایینی
+                    if (birdY - BIRD_RADIUS < p.topHeight || birdY + BIRD_RADIUS > p.topHeight + p.gap) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        // به‌روزرسانی امتیاز
+        function updateScore() {
+            for (let p of pipes) {
+                if (!p.scored && p.x + p.width < BIRD_X - BIRD_RADIUS) {
+                    p.scored = true;
+                    score++;
+                    updateScoreDisplay();
+                }
+            }
+        }
+
+        // تابع جامپ (پرش)
+        function jump() {
+            if (gameOver) return;
+            birdVelocity = JUMP_FORCE;
+            // افکت صوتی خیلی ساده (هیچی)
+        }
+
+        // حلقه اصلی بازی
+        function gameLoop() {
+            if (!gameOver) {
+                // 1. به‌روزرسانی فیزیک پرنده
+                birdVelocity += GRAVITY;
+                birdY += birdVelocity;
+
+                // 2. تولید لوله جدید
+                frameCount++;
+                if (frameCount % PIPE_SPAWN_INTERVAL === 0) {
+                    spawnPipe();
+                }
+
+                // 3. حرکت لوله‌ها به چپ
+                for (let i = pipes.length - 1; i >= 0; i--) {
+                    pipes[i].x -= PIPE_SPEED;
+                    // حذف لوله‌هایی که از صفحه خارج شدند
+                    if (pipes[i].x + pipes[i].width < 0) {
+                        pipes.splice(i, 1);
+                    }
+                }
+
+                // 4. بروزرسانی امتیاز
+                updateScore();
+
+                // 5. بررسی برخورد
+                if (checkCollisions()) {
+                    gameOver = true;
+                }
+            }
+
+            // --- رسم صحنه ---
+            drawScene();
+
+            // ادامه حلقه
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        // تابع رسم
+        function drawScene() {
+            ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+
+            // ----- زمین (چمن) -----
+            ctx.fillStyle = '#5d8c3a';
+            ctx.fillRect(0, CANVAS_H - 20, CANVAS_W, 20);
+            ctx.fillStyle = '#7cb342';
+            ctx.fillRect(0, CANVAS_H - 20, CANVAS_W, 6);
+
+            // ----- لوله‌ها -----
+            ctx.shadowColor = 'rgba(0,0,0,0.3)';
+            ctx.shadowBlur = 8;
+            for (let p of pipes) {
+                // لوله بالایی
+                ctx.fillStyle = '#2e7d32';
+                ctx.fillRect(p.x, 0, p.width, p.topHeight);
+                // نوار سبز تیره بالای لوله بالایی
+                ctx.fillStyle = '#1b5e20';
+                ctx.fillRect(p.x - 4, p.topHeight - 20, p.width + 8, 20);
+                // لوله پایینی
+                const bottomY = p.topHeight + p.gap;
+                ctx.fillStyle = '#2e7d32';
+                ctx.fillRect(p.x, bottomY, p.width, CANVAS_H - bottomY);
+                // نوار سبز تیره پایین لوله پایینی
+                ctx.fillStyle = '#1b5e20';
+                ctx.fillRect(p.x - 4, bottomY, p.width + 8, 20);
+            }
+            ctx.shadowBlur = 0;
+
+            // ----- پرنده (با سایه) -----
+            ctx.shadowColor = 'rgba(0,0,0,0.4)';
+            ctx.shadowBlur = 12;
+            // بدن پرنده
+            ctx.beginPath();
+            ctx.arc(BIRD_X, birdY, BIRD_RADIUS, 0, Math.PI * 2);
+            ctx.fillStyle = '#f1c40f';
+            ctx.fill();
+            ctx.strokeStyle = '#d4ac0d';
+            ctx.lineWidth = 2.5;
+            ctx.stroke();
+
+            // چشم
+            ctx.shadowBlur = 4;
+            ctx.beginPath();
+            ctx.arc(BIRD_X + 6, birdY - 4, 5, 0, Math.PI * 2);
+            ctx.fillStyle = 'white';
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(BIRD_X + 8, birdY - 6, 2.8, 0, Math.PI * 2);
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fill();
+            // نقطه‌ی براق
+            ctx.beginPath();
+            ctx.arc(BIRD_X + 9, birdY - 8, 1, 0, Math.PI * 2);
+            ctx.fillStyle = 'white';
+            ctx.fill();
+
+            // نوک
+            ctx.shadowBlur = 6;
+            ctx.beginPath();
+            ctx.moveTo(BIRD_X + 14, birdY + 2);
+            ctx.lineTo(BIRD_X + 24, birdY + 4);
+            ctx.lineTo(BIRD_X + 14, birdY + 10);
+            ctx.closePath();
+            ctx.fillStyle = '#e67e22';
+            ctx.fill();
+
+            // بال (با توجه به سرعت)
+            ctx.shadowBlur = 8;
+            const wingAngle = Math.min(0.6, Math.abs(birdVelocity) * 0.04);
+            ctx.beginPath();
+            ctx.ellipse(BIRD_X - 6, birdY - 6, 12, 7, -0.3 + wingAngle, 0, Math.PI * 2);
+            ctx.fillStyle = '#e67e22';
+            ctx.fill();
+
+            ctx.shadowBlur = 0;
+
+            // ----- پیام Game Over -----
+            if (gameOver) {
+                ctx.font = 'bold 44px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.shadowColor = 'rgba(0,0,0,0.7)';
+                ctx.shadowBlur = 20;
+                ctx.fillStyle = '#c0392b';
+                ctx.fillText('💥', CANVAS_W/2, CANVAS_H/2 - 40);
+                ctx.font = 'bold 32px sans-serif';
+                ctx.fillStyle = '#fff';
+                ctx.shadowColor = 'rgba(0,0,0,0.9)';
+                ctx.shadowBlur = 16;
+                ctx.fillText('باختی!', CANVAS_W/2, CANVAS_H/2 + 40);
+                ctx.shadowBlur = 0;
+            }
+
+            // راهنما (در ابتدا)
+            if (!gameOver && pipes.length === 0 && frameCount < 30) {
+                ctx.font = '18px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillStyle = 'rgba(255,255,255,0.8)';
+                ctx.shadowColor = 'rgba(0,0,0,0.8)';
+                ctx.shadowBlur = 10;
+                ctx.fillText('👆 کلیک یا لمس کن', CANVAS_W/2, 70);
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        // ===== رویدادهای کلیک / لمس =====
+        function handlePress(e) {
+            e.preventDefault();
+            jump();
+        }
+
+        // برای دسکتاپ و موبایل
+        canvas.addEventListener('click', handlePress);
+        canvas.addEventListener('touchstart', function(e) {
+            e.preventDefault();
+            jump();
+        }, { passive: false });
+
+        // دکمه ریستارت
+        document.getElementById('restartBtn').addEventListener('click', function(e) {
+            e.stopPropagation();
+            resetGame();
+        });
+
+        // جلوگیری از اسکرول با لمس روی کانوس
+        canvas.addEventListener('touchmove', function(e) {
+            e.preventDefault();
+        }, { passive: false });
+
+        // شروع بازی
+        resetGame();
+        if (animationId) cancelAnimationFrame(animationId);
+        animationId = requestAnimationFrame(gameLoop);
+
+        // در صورت کوچک شدن صفحه، بازی را متوقف نکنیم (همینطور ادامه)
+        // پاکسازی هنگام بستن (اختیاری)
+        window.addEventListener('beforeunload', function() {
+            if (animationId) cancelAnimationFrame(animationId);
+        });
+
+    })();
+</script>
+</body>
+</html>
