@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>⛏️ معدن‌چی طلا</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+        }
+        body {
+            background: #1a1a2e;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            touch-action: manipulation;
+        }
+        .game-wrapper {
+            background: #2d2d44;
+            border-radius: 28px;
+            padding: 20px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.8), inset 0 2px 0 rgba(255,255,255,0.1);
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            max-width: 420px;
+            aspect-ratio: 420 / 640;
+            background: #8B9DC3;
+            border-radius: 16px;
+            cursor: pointer;
+            touch-action: none;
+            box-shadow: inset 0 0 30px rgba(0,0,0,0.4);
+        }
+        .info-panel {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 14px;
+            color: #eee;
+            font-weight: bold;
+            font-size: 1.1rem;
+            padding: 0 10px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+        .info-panel div {
+            background: rgba(0,0,0,0.4);
+            padding: 6px 18px;
+            border-radius: 30px;
+            backdrop-filter: blur(4px);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .restart-btn {
+            background: #e67e22;
+            border: none;
+            color: white;
+            padding: 6px 22px;
+            border-radius: 30px;
+            font-weight: bold;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: 0.2s;
+            box-shadow: 0 4px 0 #b85e0a;
+            touch-action: manipulation;
+        }
+        .restart-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 0 #b85e0a;
+        }
+        .restart-btn:active {
+            transform: translateY(4px);
+            box-shadow: 0 2px 0 #b85e0a;
+        }
+        @media (max-width: 460px) {
+            .game-wrapper { padding: 10px; }
+            .info-panel { font-size: 0.9rem; flex-wrap: wrap; gap: 6px; }
+            .info-panel div { padding: 4px 12px; }
+        }
+    </style>
+</head>
+<body>
+<div class="game-wrapper">
+    <canvas id="gameCanvas" width="420" height="640"></canvas>
+    <div class="info-panel">
+        <div>💰 <span id="goldDisplay">0</span></div>
+        <div>⭐ سطح <span id="levelDisplay">1</span></div>
+        <div>⏳ <span id="timerDisplay">60</span>s</div>
+        <button class="restart-btn" id="restartBtn">🔄 دوباره</button>
+    </div>
+</div>
+
+<script>
+    (function() {
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const goldSpan = document.getElementById('goldDisplay');
+        const levelSpan = document.getElementById('levelDisplay');
+        const timerSpan = document.getElementById('timerDisplay');
+
+        const W = 420, H = 640;
+
+        // ---------- تنظیمات کلی ----------
+        const HOOK_BASE_Y = 65;
+        let hookX = W / 2;
+        let hookY = HOOK_BASE_Y;
+        let hookDir = 1;
+        const HOOK_SPEED = 2.6;
+        const THROW_SPEED = 6.2;
+        const RETRIEVE_SPEED = 5.0;
+        const HOOK_RADIUS = 16;
+
+        let isThrowing = false;
+        let isRetrieving = false;
+        let goldCount = 0;
+        let level = 1;
+        let timeLeft = 60;
+        let gameOver = false;
+        let win = false;
+        let frameCount = 0;
+        let timerInterval = null;
+
+        // آرایه اشیاء در صحنه
+        let items = [];
+
+        // ---------- تولید اشیاء بر اساس سطح ----------
+        function generateItemsForLevel(lvl) {
+            items = [];
+            const baseGold = 5 + lvl * 2;
+            const rockCount = 2 + lvl;
+            const dynamiteCount = (lvl >= 2) ? 1 : 0;
+            const moneyBagCount = (lvl >= 3) ? 1 : 0;
+
+            // طلاها (با اندازه‌های مختلف)
+            const goldTypes = [
+                { radius: 12, value: 1, color: '#FFD700', emoji: '✨' },
+                { radius: 16, value: 3, color: '#FFC107', emoji: '🌟' },
+                { radius: 22, value: 6, color: '#FFA000', emoji: '💎' }
+            ];
+
+            for (let i = 0; i < baseGold; i++) {
+                let typeIdx = Math.floor(Math.random() * goldTypes.length);
+                let type = goldTypes[typeIdx];
+                let x, y, overlap;
+                let attempts = 0;
+                do {
+                    x = 35 + Math.random() * (W - 70);
+                    y = 340 + Math.random() * 240;
+                    overlap = items.some(it => Math.hypot(it.x - x, it.y - y) < it.radius + 28);
+                    attempts++;
+                } while (overlap && attempts < 40);
+                items.push({
+                    x, y,
+                    radius: type.radius,
+                    value: type.value,
+                    type: 'gold',
+                    color: type.color,
+                    emoji: type.emoji,
+                    collected: false,
+                    sparkle: Math.random() * 100
+                });
+            }
+
+            // سنگ‌ها
+            for (let i = 0; i < rockCount; i++) {
+                let x, y, overlap;
+                let attempts = 0;
+                do {
+                    x = 30 + Math.random() * (W - 60);
+                    y = 340 + Math.random() * 240;
+                    overlap = items.some(it => Math.hypot(it.x - x, it.y - y) < it.radius + 25);
+                    attempts++;
+                } while (overlap && attempts < 30);
+                items.push({
+                    x, y,
+                    radius: 16 + Math.random() * 8,
+                    type: 'rock',
+                    collected: false,
+                    color: '#7f8c8d'
+                });
+            }
+
+            // دینامیت
+            for (let i = 0; i < dynamiteCount; i++) {
+                let x, y, overlap;
+                let attempts = 0;
+                do {
+                    x = 30 + Math.random() * (W - 60);
+                    y = 340 + Math.random() * 240;
+                    overlap = items.some(it => Math.hypot(it.x - x, it.y - y) < it.radius + 30);
+                    attempts++;
+                } while (overlap && attempts < 30);
+                items.push({
+                    x, y,
+                    radius: 18,
+                    type: 'dynamite',
+                    collected: false,
+                    color: '#E74C3C'
+                });
+            }
+
+            // کیسه پول
+            for (let i = 0; i < moneyBagCount; i++) {
+                let x, y, overlap;
+                let attempts = 0;
+                do {
+                    x = 30 + Math.random() * (W - 60);
+                    y = 340 + Math.random() * 240;
+                    overlap = items.some(it => Math.hypot(it.x - x, it.y - y) < it.radius + 30);
+                    attempts++;
+                } while (overlap && attempts < 30);
+                items.push({
+                    x, y,
+                    radius: 20,
+                    type: 'moneybag',
+                    collected: false,
+                    color: '#2ECC71'
+                });
+            }
+        }
+
+        // ---------- تایمر ----------
+        function startTimer() {
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                if (!gameOver) {
+                    timeLeft--;
+                    timerSpan.textContent = timeLeft;
+                    if (timeLeft <= 0) {
+                        timeLeft = 0;
+                        gameOver = true;
+                        win = false;
+                        clearInterval(timerInterval);
+                    }
+                }
+            }, 1000);
+        }
+
+        // ---------- ریست بازی ----------
+        function resetGame() {
+            if (timerInterval) clearInterval(timerInterval);
+            hookX = W / 2;
+            hookY = HOOK_BASE_Y;
+            hookDir = 1;
+            isThrowing = false;
+            isRetrieving = false;
+            goldCount = 0;
+            level = 1;
+            timeLeft = 60;
+            gameOver = false;
+            win = false;
+            frameCount = 0;
+            timerSpan.textContent = timeLeft;
+            levelSpan.textContent = level;
+            updateGoldDisplay();
+            generateItemsForLevel(level);
+            startTimer();
+        }
+
+        // ---------- سطح بعدی ----------
+        function nextLevel() {
+            level++;
+            levelSpan.textContent = level;
+            timeLeft = 60 - (level - 1) * 3;
+            if (timeLeft < 25) timeLeft = 25;
+            timerSpan.textContent = timeLeft;
+            gameOver = false;
+            win = false;
+            isThrowing = false;
+            isRetrieving = false;
+            hookY = HOOK_BASE_Y;
+            generateItemsForLevel(level);
+            // تایمر ادامه می‌یابد
+        }
+
+        function updateGoldDisplay() {
+            goldSpan.textContent = goldCount;
+        }
+
+        // ---------- برخورد قلاب با اشیا ----------
+        function checkCollision() {
+            for (let item of items) {
+                if (item.collected) continue;
+                const dist = Math.hypot(hookX - item.x, hookY - item.y);
+                if (dist < HOOK_RADIUS + item.radius) {
+                    if (item.type === 'gold') {
+                        item.collected = true;
+                        goldCount += item.value;
+                        updateGoldDisplay();
+                        isThrowing = false;
+                        isRetrieving = true;
+                        // بررسی پایان سطح (همه طلاها جمع شده؟)
+                        const remainingGold = items.filter(it => it.type === 'gold' && !it.collected);
+                        if (remainingGold.length === 0) {
+                            win = true;
+                            gameOver = true;
+                            clearInterval(timerInterval);
+                        }
+                        return true;
+                    } else if (item.type === 'rock') {
+                        // برخورد با سنگ = باخت
+                        gameOver = true;
+                        win = false;
+                        clearInterval(timerInterval);
+                        isThrowing = false;
+                        return true;
+                    } else if (item.type === 'dynamite') {
+                        // دینامیت: همه اشیاء روی صفحه (به جز سنگ‌ها) نابود می‌شوند
+                        item.collected = true;
+                        // پاک کردن همه طلاها، کیسه‌ها و دینامیت‌های دیگر
+                        for (let other of items) {
+                            if (other.type !== 'rock' && !other.collected) {
+                                other.collected = true;
+                                if (other.type === 'gold') {
+                                    goldCount += other.value;
+                                }
+                            }
+                        }
+                        updateGoldDisplay();
+                        isThrowing = false;
+                        isRetrieving = true;
+                        // بررسی برد
+                        const remainingGold = items.filter(it => it.type === 'gold' && !it.collected);
+                        if (remainingGold.length === 0) {
+                            win = true;
+                            gameOver = true;
+                            clearInterval(timerInterval);
+                        }
+                        return true;
+                    } else if (item.type === 'moneybag') {
+                        item.collected = true;
+                        goldCount += 10;
+                        updateGoldDisplay();
+                        isThrowing = false;
+                        isRetrieving = true;
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        // ---------- حلقه اصلی بازی ----------
+        function gameLoop() {
+            if (!gameOver) {
+                // حرکت قلاب در حالت آماده
+                if (!isThrowing && !isRetrieving) {
+                    hookX += hookDir * HOOK_SPEED;
+                    if (hookX > W - 35 || hookX < 35) {
+                        hookDir *= -1;
+                    }
+                    hookY = HOOK_BASE_Y;
+                } else if (isThrowing) {
+                    hookY += THROW_SPEED;
+                    if (hookY >= H - 30) {
+                        isThrowing = false;
+                        isRetrieving = true;
+                    } else {
+                        checkCollision();
+                    }
+                } else if (isRetrieving) {
+                    hookY -= RETRIEVE_SPEED;
+                    if (hookY <= HOOK_BASE_Y) {
+                        hookY = HOOK_BASE_Y;
+                        isRetrieving = false;
+                        // بررسی برد بعد از جمع شدن
+                        const remainingGold = items.filter(it => it.type === 'gold' && !it.collected);
+                        if (remainingGold.length === 0 && !gameOver) {
+                            win = true;
+                            gameOver = true;
+                            clearInterval(timerInterval);
+                        }
+                    }
+                }
+
+                // بروزرسانی برق طلاها
+                frameCount++;
+                for (let item of items) {
+                    if (item.type === 'gold' && !item.collected) {
+                        item.sparkle += 0.1;
+                    }
+                }
+            }
+
+            drawScene();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // ---------- تابع رسم (با کیفیت بالا) ----------
+        function drawScene() {
+            ctx.clearRect(0, 0, W, H);
+
+            // ---------- پس‌زمینه ----------
+            const skyGrad = ctx.createLinearGradient(0, 0, 0, H);
+            skyGrad.addColorStop(0, '#4A6FA5');
+            skyGrad.addColorStop(0.5, '#7B9BC2');
+            skyGrad.addColorStop(0.85, '#B5C9DB');
+            ctx.fillStyle = skyGrad;
+            ctx.fillRect(0, 0, W, H);
+
+            // کوه‌های دوردست
+            ctx.fillStyle = 'rgba(60, 80, 100, 0.3)';
+            ctx.beginPath();
+            ctx.moveTo(0, 280);
+            ctx.lineTo(80, 180);
+            ctx.lineTo(160, 250);
+            ctx.lineTo(260, 150);
+            ctx.lineTo(360, 220);
+            ctx.lineTo(W, 140);
+            ctx.lineTo(W, 280);
+            ctx.fill();
+
+            // زمین
+            ctx.fillStyle = '#4A6B3A';
+            ctx.fillRect(0, H - 30, W, 30);
+            ctx.fillStyle = '#5D8C4A';
+            ctx.fillRect(0, H - 30, W, 8);
+            // بافت چمن
+            for (let i = 0; i < W; i += 8) {
+                ctx.fillStyle = i % 16 === 0 ? '#6A9B55' : '#4A7A3A';
+                ctx.fillRect(i, H - 26, 4, 12);
+            }
+
+            // ---------- رسم اشیا ----------
+            for (let item of items) {
+                if (item.collected) continue;
+
+                if (item.type === 'gold') {
+                    // طلا با برق
+                    ctx.shadowColor = 'rgba(255, 215, 0, 0.7)';
+                    ctx.shadowBlur = 25 + 8 * Math.sin(item.sparkle);
+                    ctx.beginPath();
+                    ctx.arc(item.x, item.y, item.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = item.color;
+                    ctx.fill();
+                    ctx.shadowBlur = 12;
+                    ctx.strokeStyle = '#B8860B';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                    // برق اضافه
+                    ctx.shadowBlur = 35;
+                    ctx.beginPath();
+                    ctx.arc(item.x - 4, item.y - 5, 4 + 2 * Math.sin(item.sparkle * 2), 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(255,255,240,0.8)';
+                    ctx.fill();
+                    // مقدار روی طلا
+                    ctx.shadowBlur = 0;
+                    ctx.font = 'bold 14px sans-serif';
+                    ctx.fillStyle = '#4A3000';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('$' + item.value, item.x, item.y + 2);
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'alphabetic';
+                } else if (item.type === 'rock') {
+                    // سنگ
+                    ctx.shadowColor = 'rgba(0,0,0,0.3)';
+                    ctx.shadowBlur = 14;
+                    ctx.beginPath();
+                    ctx.arc(item.x, item.y, item.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = '#7f8c8d';
+                    ctx.fill();
+                    ctx.shadowBlur = 6;
+                    ctx.fillStyle = '#95a5a6';
+                    ctx.beginPath();
+                    ctx.arc(item.x - 3, item.y - 4, 5, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#5d6d7e';
+                    ctx.beginPath();
+                    ctx.arc(item.x + 4, item.y + 5, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                } else if (item.type === 'dynamite') {
+                    // دینامیت
+                    ctx.shadowColor = 'rgba(231, 76, 60, 0.5)';
+                    ctx.shadowBlur = 20;
+                    ctx.fillStyle = '#E74C3C';
+                    ctx.fillRect(item.x - 12, item.y - 6, 24, 12);
+                    ctx.fillStyle = '#C0392B';
+                    ctx.fillRect(item.x - 6, item.y - 10, 12, 6);
+                    ctx.fillStyle = '#F1C40F';
+                    ctx.fillRect(item.x - 2, item.y - 14, 4, 6);
+                    // فتیله
+                    ctx.beginPath();
+                    ctx.moveTo(item.x, item.y - 14);
+                    ctx.lineTo(item.x - 4, item.y - 22);
+                    ctx.strokeStyle = '#7F8C8D';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                    ctx.shadowBlur = 0;
+                } else if (item.type === 'moneybag') {
+                    // کیسه پول
+                    ctx.shadowColor = 'rgba(46, 204, 113, 0.5)';
+                    ctx.shadowBlur = 22;
+                    ctx.beginPath();
+                    ctx.ellipse(item.x, item.y, 18, 14, 0, 0, Math.PI * 2);
+                    ctx.fillStyle = '#2ECC71';
+                    ctx.fill();
+                    ctx.fillStyle = '#27AE60';
+                    ctx.font = 'bold 18px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('💰', item.x, item.y + 1);
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'alphabetic';
+                    ctx.shadowBlur = 0;
+                }
+            }
+
+            // ---------- طناب و قلاب ----------
+            ctx.shadowBlur = 0;
+            // طناب
+            ctx.beginPath();
+            ctx.moveTo(hookX, 12);
+            ctx.lineTo(hookX, hookY);
+            ctx.strokeStyle = '#5D4037';
+            ctx.lineWidth = 4;
+            ctx.stroke();
+            // سایه طناب
+            ctx.shadowColor = 'rgba(0,0,0,0.2)';
+            ctx.shadowBlur = 8;
+
+            // قلاب
+            ctx.shadowColor = 'rgba(0,0,0,0.4)';
+            ctx.shadowBlur = 16;
+            ctx.beginPath();
+            ctx.arc(hookX, hookY, HOOK_RADIUS, 0, Math.PI * 2);
+            ctx.fillStyle = '#78909C';
+            ctx.fill();
+            ctx.strokeStyle = '#455A64';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            // قلابک
+            ctx.beginPath();
+            ctx.moveTo(hookX + 8, hookY + 5);
+            ctx.quadraticCurveTo(hookX + 18, hookY + 14, hookX + 10, hookY + 26);
+            ctx.strokeStyle = '#455A64';
+            ctx.lineWidth = 4;
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            // ---------- نمایش امتیاز روی کانوس ----------
+            ctx.font = 'bold 24px sans-serif';
+            ctx.fillStyle = 'white';
+            ctx.shadowColor = 'rgba(0,0,0,0.8)';
+            ctx.shadowBlur = 14;
+            ctx.fillText('💰 ' + goldCount, 18, 48);
+            ctx.shadowBlur = 0;
+
+            // ---------- وضعیت بازی ----------
+            if (gameOver) {
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.shadowColor = 'rgba(0,0,0,0.9)';
+                ctx.shadowBlur = 30;
+                if (win) {
+                    ctx.font = 'bold 50px sans-serif';
+                    ctx.fillStyle = '#F1C40F';
+                    ctx.fillText('🎉 برنده!', W/2, H/2 - 40);
+                    ctx.font = '28px sans-serif';
+                    ctx.fillStyle = '#fff';
+                    ctx.fillText('مرحله بعدی!', W/2, H/2 + 40);
+                    // دکمه مجازی برای ادامه
+                    ctx.font = '20px sans-serif';
+                    ctx.fillStyle = '#2ECC71';
+                    ctx.fillText('👆 کلیک برای ادامه', W/2, H/2 + 100);
+                } else {
+                    ctx.font = 'bold 50px sans-serif';
+                    ctx.fillStyle = '#E74C3C';
+                    ctx.fillText('💥 باختی!', W/2, H/2 - 30);
+                    ctx.font = '26px sans-serif';
+                    ctx.fillStyle = '#ddd';
+                    ctx.fillText('روی دکمه دوباره بزن', W/2, H/2 + 50);
+                }
+                ctx.shadowBlur = 0;
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'alphabetic';
+            }
+
+            // راهنما
+            if (!gameOver && !isThrowing && !isRetrieving) {
+                ctx.font = '18px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillStyle = 'rgba(255,255,255,0.85)';
+                ctx.shadowColor = 'rgba(0,0,0,0.8)';
+                ctx.shadowBlur = 12;
+                ctx.fillText('👆 کلیک / لمس کن تا قلاب بندازی', W/2, 110);
+                ctx.shadowBlur = 0;
+                ctx.textAlign = 'left';
+            }
+        }
+
+        // ---------- مدیریت کلیک و لمس ----------
+        function handleTap(e) {
+            e.preventDefault();
+            if (gameOver) {
+                // اگر برنده شده‌ایم، به سطح بعدی برو
+                if (win) {
+                    nextLevel();
+                    return;
+                }
+                return;
+            }
+            if (!isThrowing && !isRetrieving) {
+                isThrowing = true;
+                hookY = HOOK_BASE_Y;
+            }
+        }
+
+        canvas.addEventListener('click', handleTap);
+        canvas.addEventListener('touchstart', handleTap, { passive: false });
+        canvas.addEventListener('touchmove', function(e) {
+            e.preventDefault();
+        }, { passive: false });
+
+        // دکمه ریستارت
+        document.getElementById('restartBtn').addEventListener('click', function(e) {
+            e.stopPropagation();
+            resetGame();
+        });
+
+        // ---------- شروع بازی ----------
+        resetGame();
+        gameLoop();
+    })();
+</script>
+</body>
+</html>
